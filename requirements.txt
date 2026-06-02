@@ -1,0 +1,4 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+yt-dlp>=2024.10.7
+certifi>=2024.2.2

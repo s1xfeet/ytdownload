@@ -1,0 +1,7 @@
+settings.json
+venv/
+.venv/
+__pycache__/
+*.pyc
+YTDownload.app/
+.DS_Store

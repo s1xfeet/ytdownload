@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YTDownload</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">▼</span>
+      <h1>YTDownload</h1>
+    </div>
+    <button id="settingsBtn" class="ghost" aria-label="Settings">Settings</button>
+  </header>
+
+  <main>
+    <section class="paste-card" aria-labelledby="paste-heading">
+      <h2 id="paste-heading" class="visually-hidden">Paste a YouTube URL</h2>
+      <input
+        id="urlInput"
+        type="url"
+        placeholder="Paste a YouTube URL here…"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <div id="probeStatus" class="probe-status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section id="meta" class="meta hidden" aria-labelledby="meta-heading">
+      <h2 id="meta-heading" class="visually-hidden">Video</h2>
+      <img id="thumb" alt="" />
+      <div class="meta-text">
+        <h3 id="title"></h3>
+        <p id="uploader" class="muted"></p>
+        <p id="duration" class="muted"></p>
+      </div>
+    </section>
+
+    <section id="formats" class="formats hidden" aria-labelledby="formats-heading">
+      <h2 id="formats-heading">Choose a format</h2>
+      <div id="formatList" class="format-list"></div>
+    </section>
+
+    <section id="folderSection" class="folder hidden" aria-labelledby="folder-heading">
+      <h2 id="folder-heading">Save to</h2>
+      <div class="folder-row">
+        <input id="folderInput" type="text" spellcheck="false" />
+        <select id="folderRecents" aria-label="Recent folders"></select>
+      </div>
+      <button id="downloadBtn" class="primary" disabled>Download</button>
+    </section>
+
+    <section id="jobs" class="jobs" aria-labelledby="jobs-heading">
+      <h2 id="jobs-heading" class="hidden">Downloads</h2>
+      <ul id="jobList"></ul>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog" class="dialog">
+    <form method="dialog">
+      <h2>Settings</h2>
+      <label>
+        <span>Default download folder</span>
+        <input id="settingsDefaultFolder" type="text" spellcheck="false" />
+      </label>
+      <label>
+        <span>Recent folders</span>
+        <ul id="settingsRecents" class="recents"></ul>
+      </label>
+      <menu>
+        <button value="cancel" class="ghost">Cancel</button>
+        <button id="settingsSaveBtn" value="save" class="primary">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>
