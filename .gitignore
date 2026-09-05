@@ -5,3 +5,8 @@ __pycache__/
 *.pyc
 YTDownload.app/
 .DS_Store
+
+# worst_rated_toronto.py
+.env
+*.csv
+toronto_places_cache.json
