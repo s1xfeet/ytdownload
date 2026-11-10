@@ -16,6 +16,7 @@ mkdir -p "$MACOS" "$RES"
 
 # Copy app source.
 cp -R app "$RES/app"
+cp desktop.py "$RES/desktop.py"
 cp requirements.txt "$RES/requirements.txt"
 
 # Build a self-contained venv inside the bundle.
@@ -23,6 +24,9 @@ echo "Creating venv inside bundle…"
 python3 -m venv "$RES/venv"
 "$RES/venv/bin/pip" install -q --upgrade pip
 "$RES/venv/bin/pip" install -q -r "$RES/requirements.txt"
+# yt-dlp from the nightly channel: the stable release lags behind YouTube's
+# frequent changes (e.g. PO-token 403s), and fixes land in nightly first.
+"$RES/venv/bin/pip" install -q -U --pre "yt-dlp[default]"
 
 # Info.plist
 cat > "$CONTENTS/Info.plist" <<'PLIST'
@@ -40,30 +44,37 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSUIElement</key><false/>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key><true/>
+  </dict>
 </dict>
 </plist>
 PLIST
 
-# Launcher script.
+# Launcher script — opens the native window (desktop.py picks a free port,
+# starts the server, and shows a WebKit window; no browser involved).
 cat > "$MACOS/YTDownload" <<'LAUNCH'
 #!/usr/bin/env bash
-set -euo pipefail
 
 # Ensure ffmpeg/yt-dlp from Homebrew are on PATH when launched from Finder.
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 DIR="$(cd "$(dirname "$0")/../Resources" && pwd)"
-PORT="${YTDOWNLOAD_PORT:-8765}"
-
-while lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; do
-  PORT=$((PORT + 1))
-done
-
-URL="http://127.0.0.1:$PORT"
-( sleep 1.2; open "$URL" ) &
-
 cd "$DIR"
-exec ./venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "$PORT"
+
+# A bundled GUI app has no console — log to a file so failures are diagnosable.
+LOG="${TMPDIR:-/tmp}/ytdownload.log"
+
+# The bundled wheels are built for the Mac's native arch, but a universal2
+# Python can be launched in the x86_64 slice by LaunchServices, which then
+# can't load the arm64 wheels. Force arm64 on Apple Silicon; fall back to a
+# plain launch on Intel (where the wheels are x86_64 anyway).
+if arch -arm64 true 2>/dev/null; then
+  exec arch -arm64 ./venv/bin/python desktop.py >"$LOG" 2>&1
+else
+  exec ./venv/bin/python desktop.py >"$LOG" 2>&1
+fi
 LAUNCH
 chmod +x "$MACOS/YTDownload"
 

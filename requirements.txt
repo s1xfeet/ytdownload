@@ -1,4 +1,8 @@
 fastapi>=0.115
 uvicorn[standard]>=0.32
-yt-dlp>=2024.10.7
+# yt-dlp: floor only. start.sh / build_app.sh / update.sh install the *nightly*
+# channel (pip install -U --pre "yt-dlp[default]") because the stable release
+# lags YouTube's changes and 403s. For a manual install, add --pre yourself.
+yt-dlp>=2026.7
 certifi>=2024.2.2
+pywebview>=5.0

@@ -17,11 +17,11 @@
 
   <main>
     <section class="paste-card" aria-labelledby="paste-heading">
-      <h2 id="paste-heading" class="visually-hidden">Paste a YouTube URL</h2>
+      <h2 id="paste-heading" class="visually-hidden">Paste a video URL</h2>
       <input
         id="urlInput"
         type="url"
-        placeholder="Paste a YouTube URL here…"
+        placeholder="Paste a link — YouTube, X, TikTok, Instagram…"
         autocomplete="off"
         spellcheck="false"
       />
@@ -32,6 +32,7 @@
       <h2 id="meta-heading" class="visually-hidden">Video</h2>
       <img id="thumb" alt="" />
       <div class="meta-text">
+        <span id="platform" class="badge hidden"></span>
         <h3 id="title"></h3>
         <p id="uploader" class="muted"></p>
         <p id="duration" class="muted"></p>
@@ -47,6 +48,7 @@
       <h2 id="folder-heading">Save to</h2>
       <div class="folder-row">
         <input id="folderInput" type="text" spellcheck="false" />
+        <button id="chooseFolderBtn" type="button" class="ghost pick hidden">Choose…</button>
         <select id="folderRecents" aria-label="Recent folders"></select>
       </div>
       <button id="downloadBtn" class="primary" disabled>Download</button>
@@ -63,7 +65,22 @@
       <h2>Settings</h2>
       <label>
         <span>Default download folder</span>
-        <input id="settingsDefaultFolder" type="text" spellcheck="false" />
+        <span class="input-row">
+          <input id="settingsDefaultFolder" type="text" spellcheck="false" />
+          <button id="settingsChooseFolderBtn" type="button" class="ghost pick hidden">Choose…</button>
+        </span>
+      </label>
+      <label>
+        <span>Browser cookies (for Instagram &amp; private videos)</span>
+        <select id="settingsCookiesBrowser">
+          <option value="">None</option>
+          <option value="safari">Safari</option>
+          <option value="chrome">Chrome</option>
+          <option value="firefox">Firefox</option>
+          <option value="edge">Edge</option>
+          <option value="brave">Brave</option>
+        </select>
+        <small class="hint">Reuses your login from that browser. Instagram needs this.</small>
       </label>
       <label>
         <span>Recent folders</span>

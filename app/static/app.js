@@ -44,6 +44,34 @@ $("#folderRecents").addEventListener("change", (e) => {
   $("#folderInput").value = e.target.value;
 });
 
+// Native folder picker — only available inside the pywebview app (window.pywebview).
+// In a plain browser these buttons stay hidden and users type/paste a path.
+function hasNativePicker() {
+  return !!(window.pywebview && window.pywebview.api && window.pywebview.api.choose_folder);
+}
+
+function revealNativePickers() {
+  if (!hasNativePicker()) return;
+  $("#chooseFolderBtn").classList.remove("hidden");
+  $("#settingsChooseFolderBtn").classList.remove("hidden");
+}
+
+async function pickInto(inputEl) {
+  if (!hasNativePicker()) return;
+  try {
+    const chosen = await window.pywebview.api.choose_folder(inputEl.value || "");
+    if (chosen) inputEl.value = chosen;
+  } catch {
+    /* dialog cancelled or unavailable */
+  }
+}
+
+window.addEventListener("pywebviewready", revealNativePickers);
+revealNativePickers(); // in case the API is already injected
+
+$("#chooseFolderBtn").addEventListener("click", () => pickInto($("#folderInput")));
+$("#settingsChooseFolderBtn").addEventListener("click", () => pickInto($("#settingsDefaultFolder")));
+
 let probeTimer = null;
 $("#urlInput").addEventListener("input", (e) => {
   const url = e.target.value.trim();
@@ -112,6 +140,13 @@ function renderProbe(p) {
   $("#title").textContent = p.title || "(untitled)";
   $("#uploader").textContent = p.uploader || "";
   $("#duration").textContent = fmtDuration(p.duration);
+  const badge = $("#platform");
+  if (p.platform) {
+    badge.textContent = p.platform;
+    badge.classList.remove("hidden");
+  } else {
+    badge.classList.add("hidden");
+  }
   $("#meta").classList.remove("hidden");
 
   const list = $("#formatList");
@@ -122,9 +157,7 @@ function renderProbe(p) {
     btn.className = "format-btn";
     btn.type = "button";
     btn.dataset.id = f.id;
-    const sub = f.kind === "video"
-      ? `${f.ext.toUpperCase()} · ${f.vcodec || ""}${f.filesize ? " · " + fmtBytes(f.filesize) : ""}`
-      : `${f.ext.toUpperCase()}`;
+    const sub = f.sub || (f.ext ? f.ext.toUpperCase() : "");
     btn.innerHTML = `<span class="label">${f.label}</span><span class="sub">${sub}</span>`;
     btn.addEventListener("click", () => selectFormat(f, btn));
     list.appendChild(btn);
@@ -246,6 +279,7 @@ function subscribeJob(id) {
 const dlg = $("#settingsDialog");
 $("#settingsBtn").addEventListener("click", () => {
   $("#settingsDefaultFolder").value = state.settings.default_folder;
+  $("#settingsCookiesBrowser").value = state.settings.cookies_browser || "";
   const ul = $("#settingsRecents");
   ul.innerHTML = "";
   for (const r of state.settings.recent_folders) {
@@ -259,9 +293,14 @@ dlg.addEventListener("close", async () => {
   if (dlg.returnValue !== "save") return;
   const default_folder = $("#settingsDefaultFolder").value.trim();
   if (!default_folder) return;
+  const cookies_browser = $("#settingsCookiesBrowser").value;
   state.settings = await api("/api/settings", {
     method: "PUT",
-    body: JSON.stringify({ default_folder, recent_folders: state.settings.recent_folders }),
+    body: JSON.stringify({
+      default_folder,
+      cookies_browser,
+      recent_folders: state.settings.recent_folders,
+    }),
   });
   $("#folderInput").value = state.settings.default_folder;
   renderRecents();

@@ -4,7 +4,9 @@ Context for Claude Code sessions working in this repo. Read this first, then hel
 
 ## What this is
 
-A **local** YouTube downloader. The user pastes a URL into a web UI, the app probes the real available formats with `yt-dlp`, the user picks one (video quality or audio-only), and it downloads into a folder they choose — with a live progress bar. Everything runs on `127.0.0.1`. No accounts, no cloud, single user.
+A **local** video downloader for **YouTube, X (Twitter), TikTok, Instagram**, and any other yt-dlp-supported site. The user pastes a URL into a web UI, the app probes the real available formats with `yt-dlp`, the user picks one (video quality or audio-only), and it downloads into a folder they choose — with a live progress bar. Everything runs on `127.0.0.1`. No accounts, no cloud, single user.
+
+**Multi-platform note:** unlike YouTube (which serves separate video/audio streams), most social platforms serve a single muxed file, and some — notably X — omit codec metadata on their progressive mp4s. `downloader.probe` keys video options off `height` (not vcodec) so those formats aren't dropped, and always offers a universal "Best quality" option. **Instagram requires the user's browser login** (see the cookies gotcha below).
 
 **Stack:** Python + FastAPI backend, vanilla JS/HTML/CSS frontend (no build step). `yt-dlp` is imported as a Python module (not shelled out). `ffmpeg` does the video+audio merge and MP3 conversion.
 
@@ -26,17 +28,18 @@ That's it. On first run `start.sh` creates `.venv/`, installs deps from `require
 
 ## How a user uses the app
 
-1. Paste a YouTube URL → after ~0.3s it auto-probes and shows the thumbnail, title, and format buttons.
-2. Click a format (e.g. `1080p`, `720p`, `Audio only (MP3 320kbps)`).
+1. Paste a URL (YouTube / X / TikTok / Instagram / …) → after ~0.3s it auto-probes and shows the thumbnail, title, a platform badge, and format buttons.
+2. Click a format — `Best quality` (always first), a specific resolution (e.g. `1080p`, `720p`), or `Audio only (MP3 320kbps)`.
 3. The "Save to" folder is prefilled with the default; edit the path or pick from the recent-folders dropdown.
 4. Click **Download** → a job card appears with a live progress bar (speed + ETA).
 5. When done, click **Reveal in Finder** to jump to the file (macOS only).
 
-Settings (gear/Settings button) lets the user change the default download folder and view recent folders.
+Settings (gear/Settings button) lets the user change the default download folder, view recent folders, and pick a **browser to borrow cookies from** (required for Instagram).
 
 ## Architecture
 
 ```
+desktop.py         # Native-window entry point (pywebview). Used by the .app bundle; not imported by the server.
 app/
 ├── main.py        # FastAPI app: routes + SSE endpoint. Spawns each download on a daemon thread.
 ├── downloader.py  # yt-dlp wrapper: probe() builds the format list; download() runs yt-dlp with a progress hook.
@@ -53,7 +56,7 @@ app/
 |---|---|---|
 | GET | `/` | Serves the SPA (`static/index.html`) |
 | GET / PUT | `/api/settings` | Read / write default folder + recents |
-| POST | `/api/probe` | `{url}` → `{title, uploader, duration, thumbnail, webpage_url, formats[]}` |
+| POST | `/api/probe` | `{url}` → `{title, uploader, duration, thumbnail, webpage_url, platform, formats[]}`. Reads `cookies_browser` from settings. Login-required failures return an actionable hint. |
 | POST | `/api/download` | `{url, choice, out_dir}` → `{job_id}`; validates folder, remembers it, starts the thread |
 | GET | `/api/jobs/{id}` | Snapshot (status, progress, result, error) — for reload recovery |
 | GET | `/api/jobs/{id}/events` | **SSE** stream: `snapshot` → `progress`… → `done`/`error` |
@@ -61,9 +64,11 @@ app/
 
 ### Format selection (in `downloader.probe`)
 
-- **Video:** formats are grouped by height (1080/720/480/360/…). Each option carries a yt-dlp `format_spec` like `bv*[height=1080]+ba/b[height=1080]/b[height<=1080]`, and `merge_output_format="mp4"` so ffmpeg muxes to a single `.mp4`.
-- **Audio:** `Audio only (MP3 320kbps)` uses `FFmpegExtractAudio` postprocessor; `Audio only (M4A best)` grabs `bestaudio[ext=m4a]`.
-- Playlists are disabled (`noplaylist=True`): pasting a playlist URL downloads only the single linked video. Output template is `%(title)s.%(ext)s`.
+- **Best quality (always first):** `format_spec = "bv*+ba/b"`. The safest choice on any platform, and the only video option when a site exposes no per-height metadata.
+- **Video by height:** any format reporting a `height` becomes an option (keyed by height, *not* vcodec — this is what makes X's progressive mp4s show up). Each carries `format_spec = "b[height=H]/bv*[height=H]+ba/b[height<=H]"` — prefer a single progressive file, then a merged pair, then best-at-or-below. `merge_output_format="mp4"` muxes merges to one `.mp4`.
+- **Audio:** `Audio only (MP3 320kbps)` uses the `FFmpegExtractAudio` postprocessor (works even on muxed-only platforms like TikTok — ffmpeg pulls the audio track); `Audio only (M4A best)` grabs `bestaudio[ext=m4a]/bestaudio`.
+- **Cookies:** `downloader.probe`/`download` accept `cookies_browser`; when set, `cookiesfrombrowser=(browser,)` is added so yt-dlp reuses the user's browser login (Instagram, private/age-gated).
+- Playlists are disabled (`noplaylist=True`). Output template is `%(title).200B.%(ext)s` — the `.200B` truncates long social captions (TikTok/X titles can be enormous) to a safe filename length.
 
 ## Known gotchas (you will likely hit these)
 
@@ -71,17 +76,24 @@ app/
 2. **`ffmpeg` not found / merged file has no audio.** Install ffmpeg (`brew install ffmpeg`). When launched from Finder via the `.app`, the launcher prepends `/opt/homebrew/bin:/usr/local/bin` to `PATH` because Finder doesn't inherit the shell PATH. If you add features that call ffmpeg, keep that PATH handling.
 3. **Port already in use.** `start.sh` and the `.app` launcher auto-increment the port. If the user reports "it opened the wrong/old tab," the server may be on 8766+. Check the terminal output for the actual URL.
 4. **AV1-only low-res videos.** Some videos only offer AV1 at low resolutions. They merge fine and play in QuickTime on Apple Silicon, but if the user wants guaranteed H.264, suggest 720p+.
-5. **yt-dlp extractor breakage.** When YouTube changes its site, downloads start failing site-wide. Fix: `./.venv/bin/pip install -U yt-dlp`. This is the #1 cause of "it stopped working" months later.
+5. **yt-dlp breakage — the #1 recurring failure.** When YouTube changes its internals, downloads fail site-wide. The classic 2026 symptom is **`unable to download video data: HTTP Error 403: Forbidden`** on the *download* (probe/formats still work): YouTube's high-res `web`-client formats are PO-token-gated, and stable yt-dlp lags the fix. **Fix: `./update.sh`** — it upgrades yt-dlp to the **nightly** channel (`pip install -U --pre "yt-dlp[default]"`) in both the installed `/Applications` app and the dev `.venv`, then you restart the app. That's why `start.sh`/`build_app.sh` install nightly, not stable. Notes: nightly (not stable) is where YouTube fixes land first; the `android` player client downloads without a token but caps at ~360p, so it's not a substitute for updating. **Use `python -m pip`, never the `bin/pip` wrapper, on the installed app** — the bundle venv is built in the project dir then moved to `/Applications`, which leaves `bin/pip` with a dead absolute shebang (the `python` symlink still works, which is why the app runs). `update.sh` already does this.
 6. **`/api/reveal` is macOS-only** (`open -R`). Harmless elsewhere but won't reveal.
+7. **Instagram returns "empty media response" / login required.** Instagram blocks logged-out access. Fix: Settings → Browser cookies → pick the browser the user is signed into Instagram with. This sets `cookies_browser`, and `probe`/`download` pass `cookiesfrombrowser` to yt-dlp. The probe error is already rewritten (`_friendly_error` in `main.py`) to point the user there. Note: reading **Chrome/Brave/Edge** cookies on macOS can trigger a Keychain prompt; **Safari** may need Full Disk Access; **Firefox** is usually frictionless.
+8. **X "Bad guest token" on some tweets.** Transient Twitter/X API hiccup, not our bug. Retry, update yt-dlp, or set browser cookies for X. Other tweets on the same run work fine (verified against public video tweets).
 
-## macOS .app bundle
+## macOS .app bundle (native window)
 
 ```sh
 ./build_app.sh          # produces YTDownload.app (self-contained venv inside)
 mv YTDownload.app /Applications/
 ```
 
-Double-clicking the app boots the local server and opens the browser. The bundle is gitignored (it's ~60 MB).
+Double-clicking the app runs `desktop.py`, which starts the FastAPI server on a free port and opens a **native WebKit window** via `pywebview` — its own Dock icon, no browser, no URL. Closing the window quits the server. Dev-run the same window with `./.venv/bin/python desktop.py`. The bundle is gitignored (~90 MB with pyobjc).
+
+- **`desktop.py`** is the native entry point: `_find_free_port` → `_start_server` (uvicorn in a daemon thread, signal handlers disabled since it's off the main thread) → `_wait_ready` → `webview.create_window(..., js_api=Api())` + `webview.start()` (blocks the main thread, which pywebview/Cocoa requires).
+- **Native folder picker:** `desktop.Api.choose_folder(start)` is exposed to the page as `window.pywebview.api.choose_folder()` and opens a real macOS folder dialog (`FileDialog.FOLDER`). The frontend's "Choose…" buttons (Save-to row + Settings) call it and only unhide when `window.pywebview` exists — in a plain browser (dev via `start.sh`) they stay hidden and the user types a path. This is the only feature that behaves differently between the `.app` and the browser.
+- **Launcher logs to `$TMPDIR/ytdownload.log`** — a bundled GUI app has no console, so this is where a failed launch (bad import, etc.) shows up.
+- **Architecture pin (important):** the launcher runs `arch -arm64 ./venv/bin/python desktop.py`. The python.org Python is universal2, and LaunchServices can start it in the **x86_64** slice, which then can't load the arm64-only wheels (`pydantic_core`, etc.) — you get `ImportError: incompatible architecture (have 'arm64', need 'x86_64')` and the window silently never appears. Forcing `arch -arm64` fixes it; the launcher falls back to a plain launch on Intel Macs. If you ever see that ImportError in the log, this is why.
 
 ## Other platforms (Linux/Windows)
 
@@ -101,8 +113,9 @@ python3 -m venv .venv
 If the user asks for more, these are the natural additions:
 - **Playlists / batch URLs:** loosen `noplaylist=True` in `downloader.py`; the frontend would need a per-entry job list.
 - **Subtitles / chapters:** add `writesubtitles` / `writeautomaticsub` to the yt-dlp opts.
-- **Private/age-gated videos:** add `cookiesfrombrowser` to the opts in `downloader.download`.
 - **Custom filename templates:** expose `outtmpl` in settings.
+
+Already done: multi-platform support (YouTube/X/TikTok/Instagram/…) and browser-cookie auth via the `cookies_browser` setting.
 
 ## Conventions
 

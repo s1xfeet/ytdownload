@@ -9,6 +9,20 @@ SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 DEFAULT_DOWNLOADS = str(Path.home() / "Downloads")
 MAX_RECENT = 10
 
+# Browsers yt-dlp can read cookies from (kept in sync with downloader.VALID_BROWSERS).
+# "" means no cookies. Used for logged-in sites like Instagram.
+VALID_BROWSERS = {
+    "",
+    "safari",
+    "chrome",
+    "firefox",
+    "edge",
+    "brave",
+    "chromium",
+    "opera",
+    "vivaldi",
+}
+
 _lock = Lock()
 
 
@@ -16,6 +30,7 @@ def _default_settings() -> dict:
     return {
         "default_folder": DEFAULT_DOWNLOADS,
         "recent_folders": [DEFAULT_DOWNLOADS],
+        "cookies_browser": "",
     }
 
 
@@ -35,6 +50,9 @@ def _validate(data: dict) -> dict:
                         seen.append(p)
             if seen:
                 out["recent_folders"] = seen[:MAX_RECENT]
+        cb = data.get("cookies_browser")
+        if isinstance(cb, str) and cb.strip().lower() in VALID_BROWSERS:
+            out["cookies_browser"] = cb.strip().lower()
     if out["default_folder"] not in out["recent_folders"]:
         out["recent_folders"].insert(0, out["default_folder"])
         out["recent_folders"] = out["recent_folders"][:MAX_RECENT]

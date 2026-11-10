@@ -10,6 +10,8 @@ if [ ! -d ".venv" ]; then
   python3 -m venv .venv
   ./.venv/bin/pip install -q --upgrade pip
   ./.venv/bin/pip install -q -r requirements.txt
+  # yt-dlp nightly: stable lags YouTube's changes; fixes land in nightly first.
+  ./.venv/bin/pip install -q -U --pre "yt-dlp[default]"
 fi
 
 # Find a free port if PORT is taken.

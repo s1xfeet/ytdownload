@@ -57,10 +57,26 @@ async def probe(payload: dict) -> dict:
     url = (payload.get("url") or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="Missing url")
+    cookies_browser = settings.load().get("cookies_browser") or None
     try:
-        return await asyncio.to_thread(downloader.probe, url)
+        return await asyncio.to_thread(downloader.probe, url, cookies_browser)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read video: {e}")
+        raise HTTPException(status_code=400, detail=_friendly_error(str(e), cookies_browser))
+
+
+def _friendly_error(msg: str, cookies_browser: str | None) -> str:
+    """Turn common yt-dlp failures into actionable guidance."""
+    low = msg.lower()
+    if ("login" in low or "cookies" in low or "empty media response" in low
+            or "rate-limit" in low or "rate limit" in low) and not cookies_browser:
+        return (
+            "This post needs a logged-in session (common for Instagram and "
+            "private/age-gated videos). Open Settings and pick the browser "
+            "you're logged into that site with, then try again."
+        )
+    if "unsupported url" in low:
+        return "That link isn't supported. Paste a direct link to a single video."
+    return f"Could not read video: {msg}"
 
 
 @app.post("/api/download")
@@ -78,21 +94,22 @@ async def start_download(payload: dict) -> dict:
     if not os.access(out_dir, os.W_OK):
         raise HTTPException(status_code=400, detail=f"Folder not writable: {out_dir}")
 
+    cookies_browser = settings.load().get("cookies_browser") or None
     settings.remember_folder(out_dir)
     job = registry.create(url, choice, out_dir)
-    threading.Thread(target=_run_job, args=(job,), daemon=True).start()
+    threading.Thread(target=_run_job, args=(job, cookies_browser), daemon=True).start()
     return {"job_id": job.id}
 
 
-def _run_job(job: Job) -> None:
+def _run_job(job: Job, cookies_browser: str | None) -> None:
     def cb(progress: dict) -> None:
         registry.update_progress(job, progress)
 
     try:
-        result = downloader.download(job.url, job.choice, job.out_dir, cb)
+        result = downloader.download(job.url, job.choice, job.out_dir, cb, cookies_browser)
         registry.mark_done(job, result)
     except Exception as e:
-        registry.mark_error(job, str(e))
+        registry.mark_error(job, _friendly_error(str(e), cookies_browser))
 
 
 @app.get("/api/jobs/{job_id}")
